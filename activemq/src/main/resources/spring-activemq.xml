@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns="http://www.springframework.org/schema/beans"
+       xmlns:amq="http://activemq.apache.org/schema/core"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:jms="http://www.springframework.org/schema/jms"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans     http://www.springframework.org/schema/beans/spring-beans-3.2.xsd
+            http://activemq.apache.org/schema/core          http://activemq.apache.org/schema/core/activemq-core-5.9.0.xsd
+            http://www.springframework.org/schema/context   http://www.springframework.org/schema/context/spring-context-3.2.xsd 
+            http://www.springframework.org/schema/jms http://www.springframework.org/schema/jms/spring-jms.xsd">
+
+   
+
+
+        <bean id="broker" class="org.apache.activemq.broker.BrokerService"
+              init-method="start" destroy-method="stop">
+
+            <property name="brokerName" value="vrservicesJmsBroker"/>
+
+            <property name="useJmx" value="true"/>
+            <property name="managementContext">
+                <bean class="org.apache.activemq.broker.jmx.ManagementContext">
+                    <property name="connectorPort" value="9998"/>
+                    <property name="jmxDomainName" value="vrservices.activemq"/>
+                </bean>
+            </property>
+
+            <property name="tmpDataDirectory" value="/opt/app/env/dev1/tc-30000"/>  <!-- {p:dir} -->
+
+            <property name="persistent" value="true"/>
+            <property name="persistenceAdapter">
+                <bean class="org.apache.activemq.store.kahadb.KahaDBPersistenceAdapter">
+               		 <property name="directory" value="/Users/admin/Documents/workspace/activemq-data"/>
+                    <property name="ignoreMissingJournalfiles" value="true"/>
+                    <property name="checkForCorruptJournalFiles" value="true"/>
+                    <property name="checksumJournalFiles" value="true"/>
+                </bean>
+            </property>
+            
+           <!--  <property name="persistenceAdapter">
+                <bean class="org.apache.activemq.store.jdbc.JDBCPersistenceAdapter">
+                    <property name="dataSource" ref="pooledDS"/>
+                    <property name="createTablesOnStartup" value="false"/>
+                    <property name="statements">
+                        <bean class="org.apache.activemq.store.jdbc.Statements">
+                            <property name="tablePrefix" value="BRK1_" />
+                        </bean>
+                    </property>
+                </bean>
+            </property> -->
+
+            <property name="useShutdownHook" value="false"/>
+
+            <property name="systemUsage">
+                <bean class="org.apache.activemq.usage.SystemUsage">
+                    <property name="storeUsage">
+                        <bean class="org.apache.activemq.usage.StoreUsage">
+                            <property name="limit" value="104857600"/>  <!-- 100 mb -->
+                        </bean>
+                    </property>
+                    <property name="tempUsage">
+                        <bean class="org.apache.activemq.usage.TempUsage">
+                            <property name="limit" value="52428800"/>  <!-- 50 mb -->
+                        </bean>
+                    </property>
+                </bean>
+            </property>
+
+            <property name="transportConnectorURIs">
+                <list>
+                    <value>tcp://localhost:9999?daemon=true</value>
+                </list>
+            </property>
+        </bean>
+
+    
+
+        <!-- ActiveMQ destinations to use -->
+        <amq:queue id="testQueue" physicalName="com.raj.testQueue" />
+        
+
+        <!-- Producer -->
+        <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+            <property name="connectionFactory">
+                <ref local="jmsFactory" />
+            </property>
+        </bean>
+
+        <bean id="testProducer" class="com.raj.service.jms.ProducerImpl">
+            <property name="destination" ref="testQueue" />
+            <property name="jmsTemplate" ref="jmsTemplate" />
+        </bean>
+
+        
+
+        <!-- Consumer specific beans -->
+        <!-- Pooling based JMS provider -->
+        <bean id="jmsFactory" class="org.apache.activemq.pool.PooledConnectionFactory" destroy-method="stop" depends-on="broker">
+            <property name="connectionFactory">
+                <bean class="org.apache.activemq.ActiveMQConnectionFactory">
+                    <property name="brokerURL">
+                        <value>vm://vrservicesJmsBroker?create=false</value>
+                    </property>
+                    <property name="redeliveryPolicy" ref="redeliveryPolicy" />
+                </bean>
+            </property>
+        </bean>
+
+        <bean id="redeliveryPolicy" class="org.apache.activemq.RedeliveryPolicy">
+            <property name="initialRedeliveryDelay" value="1000" />
+            <property name="maximumRedeliveries" value="3" />
+            <property name="queue" value="*" />
+            <!-- 1 minutes  -->
+            <property name="redeliveryDelay" value="1000" />
+        </bean>
+
+        <!-- message consumers -->
+        <bean id="testListener" class="com.raj.service.jms.Consumer">
+        </bean>
+        
+         
+
+        <jms:listener-container acknowledge="transacted" connection-factory="jmsFactory"
+                error-handler="errorHandler" destination-type="queue"
+                container-type="default">
+            <jms:listener id="testConsumer" destination="com.raj.testQueue" ref="testListener" />
+        </jms:listener-container>
+
+
+</beans>
